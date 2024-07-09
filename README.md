@@ -3,6 +3,15 @@
 Utility functions for getting monitor (display) information on Windows. 
 
 
+## Installation
+
+Requires Python 3.8+ and Windows
+
+```commandline
+pip install wmutil
+```
+
+## Usage
 
 ```python
 import wmutil
