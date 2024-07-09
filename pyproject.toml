@@ -22,8 +22,6 @@ classifiers = [
     'Programming Language :: Rust',
     'Intended Audience :: Developers',
     'License :: OSI Approved :: Apache Software License',
-    'Operating System :: POSIX :: Linux',
     'Operating System :: Microsoft :: Windows',
-    'Operating System :: MacOS',
 ]
 readme = "README.md"
