@@ -1,0 +1,90 @@
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  pull_request: {}
+env:
+  COLUMNS: 150
+
+jobs:
+
+  build:
+    runs-on: windows
+    matrix:
+      python-version:
+        - '3.8'
+        - '3.9'
+        - '3.10'
+        - '3.11'
+        - '3.12'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cache rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test-v0
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --interpreter ${{ matrix.python-version || '3.8 3.9 3.10 3.11 3.12 pypy3.9 pypy3.10' }}
+          rust-toolchain: stable
+          docker-options: -e CI
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pypi_files_${{ matrix.interpreter }}
+          path: dist
+
+
+
+  release:
+    needs: [build]
+    if: success() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - run: pip install -U twine
+
+
+      - name: get dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi_files_*
+          merge-multiple: true
+          path: dist
+
+      - run: twine check --strict dist/*
+
+      - name: Release PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Release GitHub
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

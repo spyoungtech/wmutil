@@ -242,12 +242,12 @@ unsafe extern "system" fn monitor_enum_proc(
 // Python bindings
 
 #[pyclass(module = "wmutil")]
-struct MonitorInfo {
+struct Monitor {
     monitor_handle: MonitorHandle,
 }
 
 #[pymethods]
-impl MonitorInfo {
+impl Monitor {
     #[getter]
     fn name(&self) -> String {
         self.monitor_handle.name().unwrap_or(String::from("Unknown monitor name"))
@@ -302,36 +302,36 @@ impl MonitorInfo {
 }
 
 #[pyfunction]
-fn get_primary_monitor() -> MonitorInfo {
+fn get_primary_monitor() -> Monitor {
     let handle = primary_monitor();
-    MonitorInfo {
+    Monitor {
         monitor_handle: handle
     }
 }
 
 #[pyfunction]
-fn get_window_monitor(hwnd: isize) -> MonitorInfo {
+fn get_window_monitor(hwnd: isize) -> Monitor {
     let handle = current_monitor(hwnd.into());
-    MonitorInfo {
+    Monitor {
         monitor_handle: handle
     }
 }
 
 #[pyfunction]
-fn enumerate_monitors() -> Vec<MonitorInfo> {
-    let mut monitors: Vec<MonitorInfo> = Vec::new();
+fn enumerate_monitors() -> Vec<Monitor> {
+    let mut monitors: Vec<Monitor> = Vec::new();
     for monitor in available_monitors() {
-        monitors.push(MonitorInfo { monitor_handle: monitor })
+        monitors.push(Monitor { monitor_handle: monitor })
     }
     monitors
 }
 
 #[pyfunction]
-fn get_monitor_from_point(x: i32, y: i32) -> MonitorInfo {
+fn get_monitor_from_point(x: i32, y: i32) -> Monitor {
     let point = POINT {x, y};
     let hmonitor = unsafe { MonitorFromPoint(point, MONITOR_DEFAULTTOPRIMARY) };
     let handle = MonitorHandle::new(hmonitor);
-    MonitorInfo {
+    Monitor {
         monitor_handle: handle
     }
 }
@@ -339,7 +339,7 @@ fn get_monitor_from_point(x: i32, y: i32) -> MonitorInfo {
 
 #[pymodule]
 fn wmutil(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<MonitorInfo>()?;
+    m.add_class::<Monitor>()?;
     m.add_function(wrap_pyfunction!(enumerate_monitors, m)?);
     m.add_function(wrap_pyfunction!(get_window_monitor, m)?);
     m.add_function(wrap_pyfunction!(get_primary_monitor, m)?);

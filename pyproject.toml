@@ -26,3 +26,4 @@ classifiers = [
     'Operating System :: Microsoft :: Windows',
     'Operating System :: MacOS',
 ]
+readme = "README.md"
