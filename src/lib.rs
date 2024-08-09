@@ -381,7 +381,8 @@ fn set_primary_monitor(display_name: String) -> PyResult<bool> {
         }
     }
 
-    assert!(maybe_this_monitor.is_some());
+    // todo: raise a proper exception instead of a panic exception
+    assert!(maybe_this_monitor.is_some(), "Monitor with name {:?} not found", display_name);
 
     let this_monitor = maybe_this_monitor.unwrap();
 
