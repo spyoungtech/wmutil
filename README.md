@@ -67,6 +67,23 @@ it is the primary monitor
 Untitled - Notepad is using monitor \\.\DISPLAY2
 ```
 
+**Changing the primary monitor:**
+
+You can use the `set_primary_monitor` function, which accepts a display name or you can use the `set_primary` method of a `Monitor` object to change the 
+primary monitor. If the monitor is already the primary monitor, no change will be made and the operation is considered successful. Returns `True` when successful and 
+`False` when not successful. If an invalid monitor name is given, an exception is raised.
+
+```python
+import wmutil
+monitor: wmutil.Monitor  # assume this is already defined
+
+wmutil.set_primary_monitor(monitor.name)
+# or
+monitor.set_primary()
+```
+
+
+
 Notes:
 
 - `monitor.size` may not necessarily reflect the monitor's resolution, but rather is the geometry used for drawing or moving windows

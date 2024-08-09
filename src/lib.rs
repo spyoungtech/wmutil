@@ -6,22 +6,25 @@ use std::{io, mem, ptr};
 use std::collections::VecDeque;
 use std::ffi::{c_void, OsString};
 use std::hash::Hash;
-use std::ops::BitAnd;
+use std::ops::{BitAnd, Neg};
 use std::ops::Deref;
 use std::os::windows::prelude::OsStringExt;
 use std::sync::OnceLock;
-
+use std::mem::size_of;
+use std::ptr::{null, null_mut};
 use dpi::{PhysicalPosition, PhysicalSize};
 use pyo3::prelude::*;
 use pyo3::pymodule;
 use windows_sys::core::HRESULT;
-use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, S_OK};
+use windows_sys::Win32::Foundation::{BOOL, HWND, WPARAM, LPARAM, POINT, RECT, POINTL, S_OK};
 use windows_sys::Win32::Graphics::Gdi::{
     DEVMODEW, ENUM_CURRENT_SETTINGS, EnumDisplayMonitors, EnumDisplaySettingsExW,
     GetMonitorInfoW, HDC,
     HMONITOR, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
     MONITORINFOEXW,
 };
+use windows_sys::Win32::Graphics::Gdi::*;
+
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryA};
 use windows_sys::Win32::UI::HiDpi::{
     MDT_EFFECTIVE_DPI, MONITOR_DPI_TYPE,
@@ -242,6 +245,7 @@ unsafe extern "system" fn monitor_enum_proc(
 // Python bindings
 
 #[pyclass(module = "wmutil")]
+#[derive(Clone)]
 struct Monitor {
     monitor_handle: MonitorHandle,
 }
@@ -282,6 +286,11 @@ impl Monitor {
     #[getter]
     fn handle(&self) -> isize {
         self.monitor_handle.0 as isize
+    }
+
+    pub fn set_primary(&self) -> PyResult<()> {
+        set_primary_monitor(self.name());
+        Ok(())
     }
 
     pub fn __hash__(&self) -> isize {
@@ -336,6 +345,91 @@ fn get_monitor_from_point(x: i32, y: i32) -> Monitor {
     }
 }
 
+fn wide_string(s: &str) -> Vec<u16> {
+    let mut vec: Vec<u16> = s.encode_utf16().collect();
+    vec.push(0);
+    vec
+}
+
+
+fn get_dev_mode(display_name: &str) -> Result<DEVMODEW, String> {
+    let mut devmode: DEVMODEW = unsafe { std::mem::zeroed() };
+    devmode.dmSize = size_of::<DEVMODEW>() as u16;
+
+    let wide_name = wide_string(display_name);
+
+    let success = unsafe {
+        EnumDisplaySettingsW(wide_name.as_ptr(), ENUM_CURRENT_SETTINGS, &mut devmode)
+    };
+
+    if success == 0 {
+        return Err(format!("Failed to retrieve settings for display: {}", display_name));
+    }
+
+    Ok(devmode)
+}
+
+
+#[pyfunction]
+fn set_primary_monitor(display_name: String) -> PyResult<bool> {
+    let all_monitors = enumerate_monitors();
+    let mut maybe_this_monitor: Option<Monitor> = None;
+    for monitor in all_monitors.clone() {
+        if monitor.name() == display_name {
+            maybe_this_monitor = Some(monitor);
+            break
+        }
+    }
+
+    // todo: raise a proper exception instead of a panic exception
+    assert!(maybe_this_monitor.is_some(), "Monitor with name {:?} not found", display_name);
+
+    let this_monitor = maybe_this_monitor.unwrap();
+
+    let (this_x, this_y) = this_monitor.position();
+
+    if (this_x == 0 && this_y == 0) {
+        // the requested monitor is already the primary monitor
+        return Ok(true)
+    }
+
+    let x_offset = this_x.neg();
+    let y_offset = this_y.neg();
+
+    let display_name_string = display_name.as_str();
+    let wide_name = wide_string(display_name_string);
+
+    for monitor in all_monitors.clone() {
+        if monitor.name() != display_name {
+            let mut devmode: DEVMODEW = get_dev_mode(monitor.name().as_str()).unwrap();
+            unsafe {
+                let (monitor_x, monitor_y) = monitor.position();
+                let new_x = monitor_x + x_offset;
+                let new_y = monitor_y + y_offset;
+                devmode.Anonymous1.Anonymous2.dmPosition = POINTL { x: new_x, y: new_y };
+                // println!("display: {} old: {} {} new: {} {}", monitor.name(), monitor_x, monitor_y, new_x, new_y);
+                ChangeDisplaySettingsExW(wide_string(monitor.name().as_str()).as_ptr(), &mut devmode, 0, CDS_UPDATEREGISTRY | CDS_NORESET, null_mut());
+            }
+        }
+    }
+    let mut devmode: DEVMODEW = get_dev_mode(display_name_string).unwrap();
+    unsafe {
+        // println!("{} being set as primary to 0 0", display_name);
+        devmode.Anonymous1.Anonymous2.dmPosition = POINTL { x: 0, y: 0 };
+        ChangeDisplaySettingsExW(wide_name.as_ptr(), &mut devmode, 0, CDS_SET_PRIMARY | CDS_UPDATEREGISTRY | CDS_NORESET, null_mut());
+    }
+
+    let result = unsafe {
+        ChangeDisplaySettingsExW(null_mut(), null_mut(), 0, 0, null_mut())
+    };
+    if result == DISP_CHANGE_SUCCESSFUL {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+
 
 #[pymodule]
 fn wmutil(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -344,6 +438,7 @@ fn wmutil(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_window_monitor, m)?);
     m.add_function(wrap_pyfunction!(get_primary_monitor, m)?);
     m.add_function(wrap_pyfunction!(get_monitor_from_point, m)?);
+    m.add_function(wrap_pyfunction!(set_primary_monitor, m)?);
 
     Ok(())
 }
